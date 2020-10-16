@@ -1,0 +1,51 @@
+
+install raspbian
+add wpa_supplicant / ssh files to /boot for wireless setup 
+
+change password:
+    - passwd pi
+
+update latest raspbian
+    - apt update
+    - apt full-upgrade
+    
+add ssh keys
+sudo apt install screen
+
+turn on SPI (raspi config) (also i2c etc... ?)
+
+install pi-blaster (? pigpio does PWM, so probably not necessary) see: https://github.com/sarfata/pi-blaster
+    - sudo apt-get install autoconf
+    - git clone https://github.com/sarfata/pi-blaster.git
+    - cd pi-blaster
+    - /autogen.sh
+    - ./configure
+    - make
+
+install node.js (this is for pi zero w : arm v6) :
+    - wget https://nodejs.org/dist/latest-v10.x/node-v10.22.1-linux-armv6l.tar.xz
+    - tar xJf node-v10.22.1-linux-armv6l.tar.xz
+    - sudo cp -r node-v10.22.1-linux-armv6l/* /usr/local/
+
+
+install pigpio (apt version is older - latest is on github (apt gave me v64 when v78 was latest)):
+    - sudo apt update
+    - sudo apt install pigpio
+    - npm i --unsafe-perm -g pigpio
+
+
+install git:
+    sudo apt install git
+
+
+
+
+TODO:
+
+ssh agent forwarding?
+    - DONT: setup ssh-agent 
+    - DONT: sudo apt install keychain (any ssh-agent running appears to completely (and silently) nix forwarding of keys)
+
+not - servo-blaster (using pigpio) 
+
+
