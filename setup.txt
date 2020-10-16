@@ -37,7 +37,16 @@ install pigpio (apt version is older - latest is on github (apt gave me v64 when
 install git:
     sudo apt install git
 
+create empty repo on github (in this case: RichardLidstone/conduit-crawler)
 
+git init
+git add . 
+git config --global user.email "lidstone@gmail.com"
+git config --global user.name "OctoBadger"
+git commit -m "conduit-crawler skeleton"
+git remote add origin git@github.com:RichardLidstone/conduit-crawler.git
+git branch -M main
+git push -u origin main
 
 
 TODO:
