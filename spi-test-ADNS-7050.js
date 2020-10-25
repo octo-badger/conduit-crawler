@@ -50,6 +50,7 @@ spi.clockSpeed(1e6);									                                // 1Mhz (one tick e
 
 log('open gpio');
 const chipSelect = new Gpio(pins.chipSelect, {mode: Gpio.OUTPUT});
+chipSelect.digitalWrite(1);                                                             // chip select high puts ADNS-7050 in high-impedence (I'm not listening) mode
 
 
 // --- end initialisation ---------------------------------------------
@@ -70,32 +71,14 @@ async function go()
     chipSelect.digitalWrite(0);
 
     // 3. Write 0x5a to register 0x3a
-    /*
-    spi.write(payload.POWER_UP_RESET, (err) =>
-    {
-        log('written POWER_UP_RESET', err);
-    })
-    /*/
     await writePayload(payload.POWER_UP_RESET, 'POWER_UP_RESET');
-    //*/
 
 
     // 4. Wait for tWAKEUP (23 ms)
-    /*
-    setTimeout(() => {
-        // 5. Write 0xFE to register 0x28
-    
-        spi.write(payload.POWER_28_FE, (err) =>
-        {
-            log('written POWER_28_FE', err);
-        })  
-    }, 23);
-    /*/
     await wait(23);
     
     // 5. Write 0xFE to register 0x28
     await writePayload(payload.POWER_28_FE, 'POWER_28_FE');
-    //*/
 
 
     /*
@@ -123,39 +106,6 @@ async function writePayload(paylode, name)
 }
 
 
-/*
-async function readRegister(register)
-{
-    return new Promise(async (resolve, reject) => 
-    {
-        await new Promise(res => 
-        {
-            spi.write(new Buffer.from([register]), (err) =>
-            {
-                log(`requested register ${register.toString(16)}`, err);
-                err && reject(err);
-                res();
-            });   
-        });
-        
-        await new Promise(res => 
-        {
-            spi.read(4, (err, inBuf) =>
-            {
-                log('readed stuffs', err);
-                for (const pair of inBuf.entries()) 
-                {
-                    log(`${pair[0]}: ${pair[1].toString(2)}`);
-                }
-                res();
-            });
-        });
-
-        resolve();
-    });
-
-}
-/*/
 async function readRegister(register)
 {
     await new Promise((resolve, reject) => 
@@ -181,7 +131,6 @@ async function readRegister(register)
         });
     });
 }
-//*/
 
 
 
