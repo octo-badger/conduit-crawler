@@ -44,13 +44,19 @@ const Gpio = require('pigpio').Gpio;
 
 log('init spi device');
 var spi = piSpi.initialize(this.config.spiDevice);                                      // initialise an spi device
+
+log(piSpi.mode);
+spi.dataMode(piSpi.mode.CPHA);
+log(spi.dataMode());
+
+
 spi.clockSpeed(1e6);									                                // 1Mhz (one tick every micro-second)
 //spi.clockSpeed(0x0001ffff);									                            // 131071 Khz (one tick just over every 7.6 micro-seconds - min timings suggest to me that clocking down may eliminate the need for delays waiting for the chip to ready data (way simpler than delaying between operations))
 //spi.clockSpeed(0xffff);									                            // 65.535 Khz (one tick just over every 15 micro-seconds)
 
 log('open gpio');
 const chipSelect = new Gpio(pins.chipSelect, {mode: Gpio.OUTPUT});
-chipSelect.digitalWrite(1);                                                             // chip select high puts ADNS-7050 in high-impedence (I'm not listening) mode
+chipSelect.digitalWrite(1);                                                             // chip select high puts ADNS-7050 in high-impedence (I'm not listening) mode                      
 
 
 // --- end initialisation ---------------------------------------------
@@ -73,7 +79,6 @@ async function go()
     // 3. Write 0x5a to register 0x3a
     await writePayload(payload.POWER_UP_RESET, 'POWER_UP_RESET');
 
-
     // 4. Wait for tWAKEUP (23 ms)
     await wait(23);
     
@@ -86,7 +91,7 @@ async function go()
     these same 3 bytes from burst motion register 0x42)
     one time regardless of the motion pin state.
     */
-    //await readRegister(registers.ProductId);
+    await readRegister(registers.ProductId);
     await readRegister(registers.Motion);
     await readRegister(registers.Surface_Quality);
 }
