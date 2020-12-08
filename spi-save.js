@@ -51,7 +51,7 @@ const Gpio = require('pigpio').Gpio;
 var fs = require('fs');
 
 log('init spi device');
-var spi = piSpi.initialize("/dev/spidev0.0");
+var spi = piSpi.initialize("/dev/spidev0.0"); 
 
 log(piSpi.mode);
 spi.dataMode(piSpi.mode.CPHA);
@@ -76,8 +76,102 @@ var blocks = [];
 
 var count = 0;
 //*/
-let emptyByteBuf = Buffer.alloc(1).fill(0x50);
+//let emptyByteBuf = Buffer.alloc(1).fill(0x50);
 
+class SpiQueue
+{
+    queue = [];
+    started = false;
+    newOperationResolver = null;
+    
+    async go()
+    {
+        this.started = true;
+
+        while(this.started)
+        {
+            await 
+        }
+    }
+
+    async add(operation)
+    {
+        queue.push(operation);
+        this.newOperationPromise && this.newOperationPromise.resolve(operation);
+    }
+
+    async next()
+    {
+        this.newOperationResolver = resolve => 
+        {
+            this.queue[0] ?
+                 resolve(this.queue[0]):                                                                        // if we have a queue item ready to process - resolve it, otherwise the promise is returned unresolved
+                    this.newOperationResolver = null;
+        };
+        new Promise();
+        return 
+    }
+
+    async stop()
+    {
+        this.started = false;
+    }
+}
+
+
+class Operation
+{
+    queue = null;
+
+    constructor(isRead, payload, callback, dataLength)
+    {
+        this.isRead = isRead;
+        this.payload = payload;
+        this.callback = callback;
+        this.dataLength = dataLength || 1;
+    }
+
+    onAdd(queue)
+    {
+        this.queue = queue;
+    }
+
+
+    /**
+     * could return true if complete, then queue reference wouldn't be needed
+     * @param {*} byte 
+     */
+    async result(byte)
+    {
+        this.callback(byte);
+    }
+
+    complete()
+    {
+        queue.remove(this);
+    }
+
+
+    passForward() {}    // would this remove the operation from the queue? this only makes sense if there's a possibility of read data being returned in a different order to the queued operations
+    passBack() {}       // can't see a use for this - the only way an operation could recieve data is if the operation before completed (presumably with all data?)
+}
+
+class ReadOperation extends Operation
+{
+    constructor(register, callback, dataLength)
+    {
+        super(true, new Buffer.from([register]), callback, dataLength);
+    }
+}
+
+class WriteOperation extends Operation
+{
+    constructor(payload, callback, dataLength)
+    {
+        super(false, payload, callback, dataLength);
+    }
+}
+ 
 
 let fileName = `spi-mode${spi.dataMode()}.log`; 
 let saveBuf = (outBuf, inBuf) =>
@@ -173,6 +267,7 @@ async function writePayload(paylode, name)
 
 async function readRegister(register)
 {
+    /*
     await new Promise((resolve, reject) => 
     {
         //spi.write(new Buffer.from([register]), (err) =>
@@ -202,6 +297,9 @@ async function readRegister(register)
         });
     });
     await wait(10);
+    /*/
+    new ReadOperation(register);
+    //*/
 }
 
 
