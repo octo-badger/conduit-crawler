@@ -34,7 +34,7 @@ let registers =
 let payload = 
 {
     POWER_UP_RESET: new Buffer.from([msb | registers.POWER_UP_RESET, 0x5a]),            // Write 0x5a to register 0x3a 
-    POWER_28_FE: new Buffer.from([msb | registers.x28, 0xfe]),                           // weird one - this is apparently required in the power-up sequence but register 0x28 is in a range of 'reserved' registers - no idea what this does basically
+    POWER_28_FE: new Buffer.from([msb | registers.x28, 0xfe]),                          // weird one - this is apparently required in the power-up sequence but register 0x28 is in a range of 'reserved' registers - no idea what this does basically
     Shutdown: new Buffer.from([msb | registers.Shutdown, 0xe7])
 }
 
@@ -82,34 +82,46 @@ class SpiQueue
 {
     queue = [];
     started = false;
-    newOperationResolver = null;
+    newOperationResolver = null;                                                                            // potential reference to a resolver function
+
+    constructor(spi)
+    {
+        this.spi = spi;
+    }
     
     async go()
     {
         this.started = true;
 
-        while(this.started)
+        while(this.started)                                                                                 // screaming loop! ...
         {
-            await 
+            let operation = await next();                                                                       // try to get the next operation (non-blockingly waits for one if the queue is empty)
+            do
+            {
+                let complete = operation.transfer(this.spi);
+            }
+            while(!complete);
         }
     }
 
     async add(operation)
     {
-        queue.push(operation);
-        this.newOperationPromise && this.newOperationPromise.resolve(operation);
+        this.queue.push(operation);                                                                             // push the operation onto the queue
+        if(this.newOperationResolver)                                                                           // if there's a stored resolver, there wasn't an operation last time next was called, so ...
+        {
+            this.newOperationResolver(this.queue.shift());                                                          // call the resolver with the operation to process
+            this.newOperationResolver = null;                                                                       // clear the stored resolver
+        }
     }
 
     async next()
     {
-        this.newOperationResolver = resolve => 
-        {
-            this.queue[0] ?
-                 resolve(this.queue[0]):                                                                        // if we have a queue item ready to process - resolve it, otherwise the promise is returned unresolved
-                    this.newOperationResolver = null;
-        };
-        new Promise();
-        return 
+        return new Promise(resolve =>                                                                           // create and return a new Promise, which ...
+                {
+                    this.queue[0] ?                                                                                         // if the queue has an operation ready for processing ...
+                        resolve(this.queue.shift()) :                                                                           // return that operation immediately ...
+                            this.newOperationResolver = resolve;                                                                    // ELSE store the resolver for a future operation
+                });
     }
 
     async stop()
@@ -123,6 +135,13 @@ class Operation
 {
     queue = null;
 
+    /**
+     * General operation constructor
+     * @param {boolean} isRead false for write operation
+     * @param {Buffer} payload binary data to send (writes must also send data)
+     * @param {function} callback callback to send recieved data to
+     * @param {int} dataLength bytes expected (I think this is unnecessary - the callback should return true when all expected data has been received)
+     */
     constructor(isRead, payload, callback, dataLength)
     {
         this.isRead = isRead;
@@ -136,6 +155,16 @@ class Operation
         this.queue = queue;
     }
 
+    transfer(spi)
+    {
+        spi.transfer(this.paylode, (err, inBuf) =>
+        {
+            log('written ' + name, err);
+            err && reject(err);
+            saveBuf(paylode, inBuf);
+            resolve();
+        });
+    }
 
     /**
      * could return true if complete, then queue reference wouldn't be needed
@@ -152,8 +181,8 @@ class Operation
     }
 
 
-    passForward() {}    // would this remove the operation from the queue? this only makes sense if there's a possibility of read data being returned in a different order to the queued operations
-    passBack() {}       // can't see a use for this - the only way an operation could recieve data is if the operation before completed (presumably with all data?)
+    //passForward() {}    // would this remove the operation from the queue? this only makes sense if there's a possibility of read data being returned in a different order to the queued operations
+    //passBack() {}       // can't see a use for this - the only way an operation could recieve data is if the operation before completed (presumably with all data?)
 }
 
 class ReadOperation extends Operation
@@ -174,26 +203,30 @@ class WriteOperation extends Operation
  
 
 let fileName = `spi-mode${spi.dataMode()}.log`; 
+/**
+ * spi reads a byte for every written, and conversely writes a byte when reading a byte - this interleaves the two buffers as write/read pairs and appends to fileName
+ * @param {Buffer} outBuf written bytes
+ * @param {Buffer} inBuf read bytes
+ */
 let saveBuf = (outBuf, inBuf) =>
 {
-    if(outBuf.length !== inBuf.length)
+    if(outBuf.length !== inBuf.length)                                                                                      // if the buffer lengths differ ...
     {
-        console.error(`buffer length mismatch: outBuf(${outBuf.length}) / inBuf(${inBuf.length})`);
+        console.error(`buffer length mismatch: outBuf(${outBuf.length}) / inBuf(${inBuf.length})`);                             // complain - in and out buffers need to be the same length
     }
 
-    let interleavedBuf = Buffer.alloc(outBuf.length * 2);
-    outBuf.subarray().forEach((outByte, i) => 
+    let interleavedBuf = Buffer.alloc(outBuf.length * 2);                                                                   // create a buffer twice the length of the in/out buffers - bif enough for all data
+    outBuf.subarray().forEach((outByte, i) =>                                                                               // iterate the bytes in the out buffer ...
     {
-        let j = (i*2);
-        interleavedBuf.writeUInt8(outByte,      j);
-        interleavedBuf.writeUInt8(inBuf[i],   j+1);
+        let j = (i*2);                                                                                                          // create an index for where this byte pair should sit
+        interleavedBuf.writeUInt8(outByte,      j);                                                                             // write the written byte in position one
+        interleavedBuf.writeUInt8(inBuf[i],   j+1);                                                                             // write the read byte in position two
     });
 
-
-    fs.appendFile(fileName, interleavedBuf, (err) => 
+    fs.appendFile(fileName, interleavedBuf, (err) =>                                                                        // attempt to append the newly interleaved write / read byte pairs to the log ...
     {
-        if (err) throw err;
-        console.log(`appended ${interleavedBuf.length} bytes to ${fileName}`);
+        if (err) throw err;                                                                                                     // throw on any error
+        console.debug(`appended ${interleavedBuf.length} bytes to ${fileName}`);                                                // log on success
     });
 }
 
