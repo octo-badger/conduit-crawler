@@ -1,0 +1,52 @@
+ba00 5a00
+    - write 2 bytes (register / command)
+        - read byte 1 belongs to no-one
+            * discard - no previous op
+        - read byte 2 belongs to write, but not expecting a value
+            * result() current op (ignored)
+
+a800 fe00 
+    - write 2 bytes (register / command)
+        - read byte 1 belongs to previous operation
+            * result() previous op (ignored)
+        - read byte 2 belongs to write, but not expecting a value
+            * result() current op (ignored)
+
+0000 
+    - write 1 byte (read-register ProductId)
+        - read byte 1 belongs to previous operation
+            * result() previous op (ignored)
+
+0123 
+    - write 1 byte (read-register RevisionId)
+        - read byte 1 belongs to previous operation (ProductId)
+            * result() previous op 
+
+3f03 
+    - write 1 byte (read-register Inverse_Product_ID)
+        - read byte 1 belongs to previous operation (RevisionId)
+            * result() previous op 
+
+3edc
+    - write 1 byte (read-register Inverse_Revision_ID)
+        - read byte 1 belongs to previous operation (Inverse_Product_ID)
+            * result() previous op 
+
+02dc 
+    - write 1 byte (read-register Motion)
+        - read byte 1 belongs to previous operation (Inverse_Revision_ID)
+            * result() previous op 
+
+0500 
+    - write 1 byte (read-register Surface_Quality)
+        - read byte 1 belongs to previous operation (Motion)
+            * result() previous op 
+
+bbfb e700 
+    - write 2 bytes (register / command)
+        - read byte 1 belongs to previous operation (Surface_Quality)
+            * result() previous op 
+        - read byte 2 belongs to write, but not expecting a value
+            * result() current op (ignored)
+
+            

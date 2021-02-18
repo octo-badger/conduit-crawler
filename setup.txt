@@ -33,21 +33,47 @@ install git:
 
 create empty repo on github (in this case: RichardLidstone/conduit-crawler)
 
-git init
-git add . 
-git config --global user.email "lidstone@gmail.com"
-git config --global user.name "OctoBadger"
-git commit -m "conduit-crawler skeleton"
-git remote add origin git@github.com:RichardLidstone/conduit-crawler.git
-git branch -M main
-git push -u origin main
+    git init
+    git add . 
+    git config --global user.email "lidstone@gmail.com"
+    git config --global user.name "OctoBadger"
+    git commit -m "conduit-crawler skeleton"
+    git remote add origin git@github.com:RichardLidstone/conduit-crawler.git
+    git branch -M main
+    git push -u origin main
+
+
+ssh agent forwarding:
+    - on host machine install keychain (I forget the steps - varies based on host) but I end up with this when I open a terminal:            
+        * keychain 2.8.5 ~ http://www.funtoo.org
+        * Found existing ssh-agent: 1234
+        * Known ssh key: /path/to/.ssh/id_rsa
+    - in host machine .ssh/config:
+        add: ForwardAgent yes
+    - add keys to github (I forget the steps, but well documented)
+    - DONT: setup ssh-agent on the pi!!!
+    - DONT: sudo apt install keychain (...on pi - any ssh-agent running appears to completely (and silently) nix forwarding of keys)
+
+remote debugging:
+    - in host machine .ssh/config:
+        add: LocalForward 9229 127.0.0.1:9229
+    - in vs code launch.json add:
+        "configurations": [
+                {
+                    "name": "Attach to Process",
+                    "type": "node",
+                    "request": "attach",
+                    "port": 9229
+                }
+                ...
+        ]
+    - run > sudo node --inspect-brk whatever.js
+    - attach from vs code debugger pane
+
 
 
 TODO:
 
-ssh agent forwarding?
-    - DONT: setup ssh-agent 
-    - DONT: sudo apt install keychain (any ssh-agent running appears to completely (and silently) nix forwarding of keys)
 
 not - servo-blaster (using pigpio) 
 
@@ -59,5 +85,3 @@ install pi-blaster (? pigpio does PWM, so probably not necessary) see: https://g
     - /autogen.sh
     - ./configure
     - make
-
-

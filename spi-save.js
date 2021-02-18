@@ -5,40 +5,43 @@ class SpiQueue
     constructor(spi, bufferLogCallback)
     {
         this.spi = spi;
-        this.bufferLogCallback = bufferLogCallback;
+        this.bufferLogCallback = bufferLogCallback;                                                             // optional sink for the interleaved transfer buffer
         
         this.queue = [];
         this.started = false;
-        this.newOperationResolver = null;                                                                            // potential reference to a resolver function
+        this.newOperationResolver = null;                                                                       // potential reference to a resolver function
     }
     
+
+    /**
+     * Start procesing queue items.
+     * Handles the current and previous operations, setting up the transfer
+     */
     async go()
     {
         this.started = true;
         log('starting queue');
+        let previousOperation = null;
 
-        while(this.started)                                                                                 // screaming loop! ...
+        while(this.started)                                                                                     // screaming loop! ...
         {
             let operation = await this.next();                                                                       // try to get the next operation (non-blockingly waits for one if the queue is empty)
-            log(`got operation: ${operation.str()}`);
+            log(`got ${operation.str()}`);
 
-            /*
-            do
-            {
-                let complete = transfer(operation, this.spi);
-            }
-            while(!complete);
-            /*/
-            await this.transfer(operation, this.spi);
-            //*/
+            await this.transfer(operation, previousOperation, this.spi);
+            previousOperation = operation;
         }
     }
 
+
+    /**
+     * 
+     * @param {Operation} operation the operation to add to the queue
+     */
     async add(operation)
     {
-        log(`adding operation ${operation.str()} :: (has newOperationResolver: ${this.newOperationResolver == null})`);
+        log(`adding ${operation.str()} :: (has newOperationResolver: ${this.newOperationResolver == null})`);
         this.queue.push(operation);                                                                             // push the operation onto the queue
-
         
         if(this.newOperationResolver)                                                                           // if there's a stored resolver, there wasn't an operation last time next was called, so ...
         {
@@ -46,11 +49,26 @@ class SpiQueue
             this.newOperationResolver = null;                                                                       // clear the stored resolver
         }
     }
+
+    /*
+    async completionOf(operation)
+    {
+        /// await completionOf(operation) - blocks until the passed operation has completed?
+        /// may not be necessary as the queue will pause when no new operations are available
+    }
+    //*/
     
 
-    async transfer(operation, spi)
+    /**
+     * Transfer those pesky bytes
+     * Handles spi transfer and routing bytes to the correct operations
+     * @param {Operation} operation current operation to process
+     * @param {Operation} previousOperation the previous operation - may be waiting for data
+     * @param {piSpi} spi the spi bus object
+     */
+    async transfer(operation, previousOperation, spi)
     {
-        log(`transferring ${operation.length} bytes`);
+        log(`transferring ${operation.payload.toString('hex')} bytes`);
         let transferring = true;
 
         //while(transferring && this.started)
@@ -58,21 +76,29 @@ class SpiQueue
             await new Promise((resolve, reject) => 
             {
                 log('in promise');
-                /*
-                transferring = false;
-                resolve();
-                /*/
+                
                 try
                 {
                     spi.transfer(operation.payload, (err, inBuf) =>
                     {
-                        log('written ' + operation.payload.length, err);
+                        log('written ' + operation.payload.toString('hex'), err);
                         err && reject();
 
-                        this.saveBuf(operation.payload, inBuf);                                                              // TODO: generalise somehow
+                        this.saveBuf(operation.payload, inBuf);
                         inBuf.subarray().forEach((byte, i) =>                                                           // iterate the bytes in retreived buffer ...
                         {
-                            transferring && (transferring = operation.result(byte));                                        // if transferring is still true, pass the byte to the operation and update the transferring flag (this allows the operation to )
+                            if(previousOperation && previousOperation.result(byte))
+                            {
+                                previousOperation = null;
+                            }
+                            else
+                            {
+                                /*
+                                transferring &&= operation.result(byte);                                                   // if transferring is still true, pass the byte to the operation and update the transferring flag (this allows the operation to)
+                                /*/
+                                transferring = transferring && operation.result(byte);                                                   // if transferring is still true, pass the byte to the operation and update the transferring flag (this allows the operation to)
+                                //*/
+                            }
                         });
                         resolve();
                     });
@@ -82,13 +108,15 @@ class SpiQueue
                     log('error', e);
                     reject();
                 }
-                //*/
             });
             log('after promise')
         }
     }
 
 
+    /**
+     * (internal) Gets the next queued operation (or the promise of the next one when it's added)
+     */
     async next()
     {
         return new Promise(resolve =>                                                                           // create and return a new Promise, which ...
@@ -101,11 +129,16 @@ class SpiQueue
                 });
     }
 
+
+    /**
+     * stop the queue, I'm getting off
+     */
     async stop()
     {
         log('stopping queue');
         this.started = false;
     }
+
 
     /**
      * spi reads a byte for every written, and conversely writes a byte when reading a byte - this interleaves the two buffers as write/read pairs and appends to fileName
@@ -125,8 +158,8 @@ class SpiQueue
             outBuf.subarray().forEach((outByte, i) =>                                                                               // iterate the bytes in the out buffer ...
             {
                 let j = (i*2);                                                                                                          // create an index for where this byte pair should sit
-                interleavedBuf.writeUInt8(outByte,      j);                                                                             // write the written byte in position one
-                interleavedBuf.writeUInt8(inBuf[i],   j+1);                                                                             // write the read byte in position two
+                interleavedBuf.writeUInt8(outByte,  j);                                                                                 // write the written byte in position one
+                interleavedBuf.writeUInt8(inBuf[i], j+1);                                                                               // write the read byte in position two
             });
         
             this.bufferLogCallback(interleavedBuf);
@@ -140,23 +173,15 @@ class Operation
 {
     /**
      * General operation constructor
-     * @param {boolean} isRead false for write operation
      * @param {Buffer} payload binary data to send (writes must also send data)
      * @param {function} callback callback to send recieved data to
-     * @param {int} dataLength bytes expected (I think this is unnecessary - the callback should return true when all expected data has been received)
      */
-    constructor(isRead, payload, callback, dataLength)
+    constructor(payload, callback)
     {
-        this.isRead = isRead;
         this.payload = payload;
         this.callback = callback;
-        this.dataLength = dataLength || 1;
     }
 
-    //onAdd(queue)
-    //{
-    //    this.queue = queue;
-    //}
 
     /**
      * could return true if complete, then queue reference wouldn't be needed
@@ -164,41 +189,20 @@ class Operation
      */
     async result(byte)
     {
-        log(`resulting byte: ${byte}`);
+        log(`resulting byte: ${byte.toString('hex')}`);
         let complete = this.callback(byte);
         let keepTransfering = complete !== true;
         return keepTransfering;
     }
 
+
     str()
     {
-        return `${this.isRead ? 'read' : 'write'} ${this.payload.length} bytes`;
-    }
-
-    //complete()
-    //{
-    //    queue.remove(this);
-    //}
-
-    //passForward() {}    // would this remove the operation from the queue? this only makes sense if there's a possibility of read data being returned in a different order to the queued operations
-    //passBack() {}       // can't see a use for this - the only way an operation could recieve data is if the operation before completed (presumably with all data?)
-}
-
-class ReadOperation extends Operation
-{
-    constructor(register, callback, dataLength)
-    {
-        super(true, new Buffer.from([register]), callback, dataLength);
+        let msg = `operation ${this.payload.length} bytes: ${this.payload.toString('hex')}`;
+        return msg;
     }
 }
 
-class WriteOperation extends Operation
-{
-    constructor(payload, callback, dataLength)
-    {
-        super(false, payload, callback, dataLength);
-    }
-}
  
 
 
@@ -289,25 +293,12 @@ let saveBuf = (interleavedBuf) =>
 
 let queue = new SpiQueue(spi, saveBuf);
 
-/*
-var BUFFER_SIZE_OUT = 64;
-var BUFFER_SIZE_IN = 64;
-var input = Buffer(BUFFER_SIZE_IN);
-var output = Buffer(BUFFER_SIZE_OUT);
-
-var blocks = [];
-
-var count = 0;
-//*/
-//let emptyByteBuf = Buffer.alloc(1).fill(0x50);
-
-
 
 
 async function go()
 {
     // this shouldn't take 10 seconds
-    setTimeout(() => queue.stop(), 10000);
+    //setTimeout(() => queue.stop(), 10000);
 
     /*
         The ADNS-7050 does not perform an internal power up
@@ -325,88 +316,50 @@ async function go()
     queue.go();
 
     // 3. Write 0x5a to register 0x3a
-    await writePayload(payload.POWER_UP_RESET, 'POWER_UP_RESET');
+    await writePayload(payload.POWER_UP_RESET);
 
     // 4. Wait for tWAKEUP (23 ms)
     await wait(23);
     
     // 5. Write 0xFE to register 0x28
-    await writePayload(payload.POWER_28_FE, 'POWER_28_FE');
+    await writePayload(payload.POWER_28_FE);
 
     /*
     6. Read from registers 0x02, 0x03, and 0x04 (or read
     these same 3 bytes from burst motion register 0x42)
     one time regardless of the motion pin state.
     */
-    await readRegister(registers.ProductId);
-    await readRegister(registers.RevisionId);
-    await readRegister(registers.Inverse_Product_ID);
-    await readRegister(registers.Inverse_Revision_ID);
+    await readRegister(registers.ProductId, byte => 
+        {
+            return byte == 0x23
+        });
+    await readRegister(registers.RevisionId, byte => 
+        {
+            return byte === 0x03
+        });
+    await readRegister(registers.Inverse_Product_ID, byte => byte === 0xdc);
+    await readRegister(registers.Inverse_Revision_ID, byte => byte === 0xdc);
     await readRegister(registers.Motion);
     await readRegister(registers.Surface_Quality);
     
-    await writePayload(payload.Shutdown, 'Shutdown');
+    await writePayload(payload.Shutdown);
     //*/
     
     //queue.stop();
 }
 
 
-async function writePayload(paylode, name)
+async function writePayload(paylode, callback)
 {   
-    /*
-    return new Promise((resolve, reject) => 
-    {
-        spi.transfer(paylode, (err, inBuf) =>
-        {
-            log('written ' + name, err);
-            err && reject(err);
-            saveBuf(paylode, inBuf);
-            resolve();
-        });
-    });
-    await wait(10);
-    /*/
-    queue.add(new WriteOperation(paylode, (byte) => true));
-    //*/
+    callback || (callback = byte => true)
+    queue.add(new Operation(paylode, callback));
 }
 
 
-async function readRegister(register)
+async function readRegister(register, callback)
 {
-    /*
-    await new Promise((resolve, reject) => 
-    {
-        //spi.write(new Buffer.from([register]), (err) =>
-        let paylode = new Buffer.from([register]); 
-        spi.transfer(paylode, (err, inBuf) =>
-        {
-            log(`requested register ${register.toString(16)}`, err);
-            err && reject(err);
-            saveBuf(paylode, inBuf);
-            resolve();
-        });   
-    });
-    
-    await wait(10);
-    await new Promise((resolve, reject) => 
-    {
-        //spi.read(4, (err, inBuf) =>
-        spi.transfer(emptyByteBuf, (err, inBuf) =>
-        {
-            log('readed stuffs', err);
-            saveBuf(emptyByteBuf, inBuf);
-            for (const pair of inBuf.entries()) 
-            {
-                log(`${pair[0]}: ${pair[1].toString(2)}`);
-            }
-            resolve();
-        });
-    });
-    await wait(10);
-    /*/
-    queue.add(new ReadOperation(register, (byte) => true));
-    //*/
+    callback || (callback = (byte => true));
+    queue.add(new Operation(new Buffer.from([register]), callback));
 }
 
 
