@@ -87,17 +87,12 @@ class SpiQueue
                         this.saveBuf(operation.payload, inBuf);
                         inBuf.subarray().forEach((byte, i) =>                                                           // iterate the bytes in retreived buffer ...
                         {
+                            // slightly wrong - first operation will br passed the bytes that are read which really belong to no-one ... but perhaps this is a good thing? better than them just being discarded?
                             if(previousOperation && previousOperation.result(byte))
                             {
                                 previousOperation = null;
-                            }
-                            else
-                            {
-                                /*
-                                transferring &&= operation.result(byte);                                                   // if transferring is still true, pass the byte to the operation and update the transferring flag (this allows the operation to)
-                                /*/
+                            } else {
                                 transferring = transferring && operation.result(byte);                                                   // if transferring is still true, pass the byte to the operation and update the transferring flag (this allows the operation to)
-                                //*/
                             }
                         });
                         resolve();
@@ -189,7 +184,7 @@ class Operation
      */
     async result(byte)
     {
-        log(`resulting byte: ${byte.toString('hex')}`);
+        log(`resulting byte: ${byte.toString(16)}`);
         let complete = this.callback(byte);
         let keepTransfering = complete !== true;
         return keepTransfering;
@@ -294,6 +289,17 @@ let saveBuf = (interleavedBuf) =>
 let queue = new SpiQueue(spi, saveBuf);
 
 
+function checkExpected(name, value) 
+{
+    return byte => 
+    {
+        byte === value ?
+            console.log(`${name}: correct`) :
+                console.warn(`${name}: doesn't match (expected: ${byte.toString(16)}, found: ${value.toString(16)})`)
+        return true;
+    }
+}
+
 
 async function go()
 {
@@ -316,47 +322,41 @@ async function go()
     queue.go();
 
     // 3. Write 0x5a to register 0x3a
-    await writePayload(payload.POWER_UP_RESET);
+    writePayload(payload.POWER_UP_RESET);
 
     // 4. Wait for tWAKEUP (23 ms)
-    await wait(23);
+    await pause(23);
     
     // 5. Write 0xFE to register 0x28
-    await writePayload(payload.POWER_28_FE);
+    writePayload(payload.POWER_28_FE);
 
     /*
     6. Read from registers 0x02, 0x03, and 0x04 (or read
     these same 3 bytes from burst motion register 0x42)
     one time regardless of the motion pin state.
     */
-    await readRegister(registers.ProductId, byte => 
-        {
-            return byte == 0x23
-        });
-    await readRegister(registers.RevisionId, byte => 
-        {
-            return byte === 0x03
-        });
-    await readRegister(registers.Inverse_Product_ID, byte => byte === 0xdc);
-    await readRegister(registers.Inverse_Revision_ID, byte => byte === 0xdc);
-    await readRegister(registers.Motion);
-    await readRegister(registers.Surface_Quality);
+    readRegister(registers.ProductId, checkExpected('ProductId', 0x23));
+    readRegister(registers.RevisionId, checkExpected('RevisionId', 0x03));
+    readRegister(registers.Inverse_Product_ID, checkExpected('Inverse_Product_ID', 0xdc));
+    readRegister(registers.Inverse_Revision_ID, checkExpected('Inverse_Revision_ID', 0xfc));
+    readRegister(registers.Motion);
+    readRegister(registers.Surface_Quality);
     
-    await writePayload(payload.Shutdown);
+    writePayload(payload.Shutdown);
     //*/
     
     //queue.stop();
 }
 
 
-async function writePayload(paylode, callback)
+function writePayload(paylode, callback)
 {   
     callback || (callback = byte => true)
     queue.add(new Operation(paylode, callback));
 }
 
 
-async function readRegister(register, callback)
+function readRegister(register, callback)
 {
     callback || (callback = (byte => true));
     queue.add(new Operation(new Buffer.from([register]), callback));
@@ -367,14 +367,14 @@ async function readRegister(register, callback)
  * async pause for a number of milliseconds
  * @param {int} timeout async wait time in miiliseconds
  */
-function wait(timeout) 
+function pause(timeout) 
 {
-    log(`waiting for ${timeout}ms`);
+    log(`pausing for ${timeout}ms`);
     return new Promise(resolve => 
-    {
+    { 
         setTimeout(() => 
         {
-            log(`finished waiting for ${timeout}ms`);
+            log(`finished pausing for ${timeout}ms`);
             resolve();
         }, timeout);
     });
