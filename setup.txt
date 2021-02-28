@@ -54,10 +54,18 @@ ssh agent forwarding:
     - DONT: setup ssh-agent on the pi!!!
     - DONT: sudo apt install keychain (...on pi - any ssh-agent running appears to completely (and silently) nix forwarding of keys)
 
-remote debugging:
-    - in host machine .ssh/config:
-        add: LocalForward 9229 127.0.0.1:9229
-    - in vs code launch.json add:
+
+
+
+ssh for remote development:
+(can't use the vs code ssh-remote because it doesn't support the raspberry Pi zero W : arm v6 architechture - and that wasn't obvious to me, or easy to discover let me tell you)
+(This would be easier to do pure windows (no wsl2) and even easier in pure linux, (with both I don't think you'd need the intermediate 2222 tunnel off the top of my head) but I guess I'm a sucker for punishment)
+---------------------------
+
+windows host config:                        
+    - copied win .ssh key to pi (PS> type $env:USERPROFILE\.ssh\id_rsa.pub | ssh -p 2222 pi@10.0.0.23 "cat >> .ssh/authorized_keys")
+    - can add "10.0.0.23     lccam" to hosts file   
+    - in vs code workspace launch.json add:
         "configurations": [
                 {
                     "name": "Attach to Process",
@@ -66,9 +74,40 @@ remote debugging:
                     "port": 9229
                 }
                 ...
-        ]
-    - run > sudo node --inspect-brk whatever.js
+        ]            
+
+wsl2 config:
+    - copied wsl2 .ssh key to pi
+    - config:
+        Host externalHost
+            HostName www.externalDomain.org                     # use your domain / external IP or whatever
+            LocalForward 127.0.0.2:22 192.168.1.211:22          # forward pi ssh port to wsl2 (binding to 127.0.0.2:22 means you can just ssh to 127.0.0.2 without a special port and still run sshd on wsl2 localhost)
+            LocalForward 0.0.0.0:2222 192.168.1.211:22          # also forward pi ssh port to public ip of wsl2 instance (this time you may have to use a different port to avoid collision)
+            User richard                                        # default connect as me
+
+        Host lccam
+            HostName 127.0.0.2                                  # pretend the pi aliased as lccam (local conduit camera) is local to wsl2 instance (this is the case whereever you're connecting from)
+            LocalForward 9229 127.0.0.1:9229                    # forward the pi's debugging port to 'lccam' (127.0.0.2:9229)
+            User pi                                             # default connect as pi user
+            ForwardAgent yes                                    # forward our agent keys so we can use github when ssh'd in to the pi
+                            
+
+then! :
+    - in wsl2:
+        > ssh externalHost
+
+    - in vs code:
+        - use ssh fs extension to connect whatever folders via pi@10.0.0.23:2222 (this uses windows' ssh / network so you need to use the wsl2 ip / port forwarded by wsl2 ssh connection, so you must be ssh'd in)
+        - use vs code terminal: (note: I had to add -q to stop "channel 3: open failed: connect failed: Connection refused" messages spamming the terminal - suddenly started happening, I believe it's the vs code debugger trying to connect to 9229, and ssh warning that nothing is listening on the pi 9229 port (until you start a debugging session). Wasn't happening before, and just started - perhaps an update added a heartbeat or something?)
+            > ssh -q lccam
+            > sudo node --inspect-brk whatever.js
     - attach from vs code debugger pane
+    - profit!                        
+                            
+                            
+
+
+
 
 
 
