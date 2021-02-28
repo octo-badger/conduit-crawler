@@ -28,8 +28,15 @@ class SpiQueue
             let operation = await this.next();                                                                       // try to get the next operation (non-blockingly waits for one if the queue is empty)
             log(`got ${operation.str()}`);
 
-            await this.transfer(operation, previousOperation, this.spi);
-            previousOperation = operation;
+            if(operation.functionPayload)
+            {
+                await operation.payload(this.spi);
+            }
+            else
+            {
+                await this.transfer(operation, previousOperation, this.spi);
+                previousOperation = operation;
+            }
         }
     }
 
@@ -175,6 +182,7 @@ class Operation
     {
         this.payload = payload;
         this.callback = callback;
+        this.functionPayload = typeof(payload) === 'function';
     }
 
 
@@ -295,7 +303,7 @@ function checkExpected(name, value)
     {
         byte === value ?
             console.log(`${name}: correct`) :
-                console.warn(`${name}: doesn't match (expected: ${byte.toString(16)}, found: ${value.toString(16)})`)
+                console.warn(`${name}: doesn't match (expected: ${value.toString(16)}, found: ${byte.toString(16)})`)
         return true;
     }
 }
@@ -325,7 +333,8 @@ async function go()
     writePayload(payload.POWER_UP_RESET);
 
     // 4. Wait for tWAKEUP (23 ms)
-    await pause(23);
+    //await pause(23);
+    queue.add(new Operation(async () => await pause(23)));
     
     // 5. Write 0xFE to register 0x28
     writePayload(payload.POWER_28_FE);
