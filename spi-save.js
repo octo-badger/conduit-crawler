@@ -26,7 +26,7 @@ class SpiQueue
         while(this.started)                                                                                     // screaming loop! ...
         {
             let operation = await this.next();                                                                       // try to get the next operation (non-blockingly waits for one if the queue is empty)
-            log(`got ${operation.str()}`);
+            //log(`got ${operation.str()}`);
 
             if(operation.functionPayload)
             {
@@ -47,7 +47,7 @@ class SpiQueue
      */
     async add(operation)
     {
-        log(`adding ${operation.str()} :: (has newOperationResolver: ${this.newOperationResolver == null})`);
+        //log(`adding ${operation.str()} :: (has newOperationResolver: ${this.newOperationResolver !== null})`);
         this.queue.push(operation);                                                                             // push the operation onto the queue
         
         if(this.newOperationResolver)                                                                           // if there's a stored resolver, there wasn't an operation last time next was called, so ...
@@ -75,20 +75,21 @@ class SpiQueue
      */
     async transfer(operation, previousOperation, spi)
     {
-        log(`transferring ${operation.payload.toString('hex')} bytes`);
+        let name = operation.name ? ` ${operation.name}:` : '';
+        log(`transferring${name} ${operation.payload.toString('hex')} bytes`);
         let transferring = true;
 
         //while(transferring && this.started)
         {
             await new Promise((resolve, reject) => 
             {
-                log('in promise');
+                //log('in promise');
                 
                 try
                 {
                     spi.transfer(operation.payload, (err, inBuf) =>
                     {
-                        log('written ' + operation.payload.toString('hex'), err);
+                        //log('written ' + operation.payload.toString('hex'), err);
                         err && reject();
 
                         this.saveBuf(operation.payload, inBuf);
@@ -111,7 +112,7 @@ class SpiQueue
                     reject();
                 }
             });
-            log('after promise')
+            //log('after promise')
         }
     }
 
@@ -178,10 +179,11 @@ class Operation
      * @param {Buffer} payload binary data to send (writes must also send data)
      * @param {function} callback callback to send recieved data to
      */
-    constructor(payload, callback)
+    constructor(payload, callback, name)
     {
         this.payload = payload;
         this.callback = callback;
+        this.name = name;
         this.functionPayload = typeof(payload) === 'function';
     }
 
@@ -192,7 +194,8 @@ class Operation
      */
     async result(byte)
     {
-        log(`resulting byte: ${byte.toString(16)}`);
+        let name = this.name ? ` for ${this.name}` : '';
+        log(`resulting byte${name}: ${byte.toString(16)}`);
         let complete = this.callback(byte);
         let keepTransfering = complete !== true;
         return keepTransfering;
@@ -201,7 +204,10 @@ class Operation
 
     str()
     {
-        let msg = `operation ${this.payload.length} bytes: ${this.payload.toString('hex')}`;
+        let name = this.name ? `'${this.name}' ` : '';
+        let msg = `operation ${name}` + this.functionPayload ?
+                                            '(function)' :
+                                                `${this.payload.length} bytes: ${this.payload.toString('hex')}`;
         return msg;
     }
 }
@@ -233,6 +239,10 @@ let registers =
     RevisionId: 0x01,
     Motion: 0x02,
     Surface_Quality: 0x05,
+    CRC0: 0x0c, 
+    CRC1: 0x0d, 
+    CRC2: 0x0e, 
+    CRC3: 0x0f, 
     x28: 0x28,
     POWER_UP_RESET: 0x3a,
     Shutdown: 0x3b,
@@ -243,6 +253,7 @@ let registers =
 
 let payload = 
 {
+    Self_Test: new Buffer.from([msb | 0x10, 0x01]),                                     // Write 0000 0001 to register 0x10, then you need to wait 250 ms  
     POWER_UP_RESET: new Buffer.from([msb | registers.POWER_UP_RESET, 0x5a]),            // Write 0x5a to register 0x3a 
     POWER_28_FE: new Buffer.from([msb | registers.x28, 0xfe]),                          // weird one - this is apparently required in the power-up sequence but register 0x28 is in a range of 'reserved' registers - no idea what this does basically
     Shutdown: new Buffer.from([msb | registers.Shutdown, 0xe7])
@@ -333,7 +344,7 @@ async function go()
     writePayload(payload.POWER_UP_RESET);
 
     // 4. Wait for tWAKEUP (23 ms)
-    //await pause(23);
+    //await pause(23);  
     queue.add(new Operation(async () => await pause(23)));
     
     // 5. Write 0xFE to register 0x28
@@ -348,6 +359,17 @@ async function go()
     readRegister(registers.RevisionId, checkExpected('RevisionId', 0x03));
     readRegister(registers.Inverse_Product_ID, checkExpected('Inverse_Product_ID', 0xdc));
     readRegister(registers.Inverse_Revision_ID, checkExpected('Inverse_Revision_ID', 0xfc));
+
+
+    writePayload(payload.Self_Test);
+    queue.add(new Operation(async () => await pause(300)));
+
+    readRegister(registers.CRC0);
+    readRegister(registers.CRC1);
+    readRegister(registers.CRC2);
+    readRegister(registers.CRC3);
+
+
     readRegister(registers.Motion);
     readRegister(registers.Surface_Quality);
     
@@ -361,14 +383,16 @@ async function go()
 function writePayload(paylode, callback)
 {   
     callback || (callback = byte => true)
-    queue.add(new Operation(paylode, callback));
+    let name = Object.entries(payload).find(e => e[1] === paylode)[0];
+    queue.add(new Operation(paylode, callback, name));
 }
 
 
 function readRegister(register, callback)
 {
     callback || (callback = (byte => true));
-    queue.add(new Operation(new Buffer.from([register]), callback));
+    let name = Object.entries(registers).find(e => e[1] === register)[0];
+    queue.add(new Operation(new Buffer.from([register]), callback, name));
 }
 
 
