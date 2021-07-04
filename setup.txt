@@ -106,6 +106,43 @@ then! :
                             
                             
 
+linux host config:
+
+by default sshd listens to 0.0.0.0 which means both any external ip (eg: 10.0.0.15:22) and loopback 127.0.0.*:22 but I want to add ssh local forwards to 127.0.0.2 / 127.0.0.3 etc
+so first step is to setup sshd to listen only to explicit ips 
+
+create file /usr/local/sbin/sshd-listenLocal.sh: (-rwxr-xr-x root root)
+contents---------------------
+#!/bin/bash
+
+ip -4 addr show dev wlp2s0 | grep "inet" | awk '{print $2}' | awk -F/ '{print "ListenAddress " $1}' > /etc/ssh/sshd_config.d/listenLocalIp.conf
+end--------------------------
+
+
+modify file /etc/systemd/system/multi-user.target.wants/sshd.service:
+    - add "ExecStartPre=+/usr/local/sbin/sshd-listenLocal.sh" as below
+
+contents---------------------
+[Unit]
+Description=OpenSSH Daemon
+After=network.target
+
+[Service]
+Type=notify
+EnvironmentFile=-/etc/sysconfig/ssh
+ExecStartPre=+/usr/local/sbin/sshd-listenLocal.sh
+ExecStartPre=/usr/sbin/sshd-gen-keys-start
+ExecStartPre=/usr/sbin/sshd -t $SSHD_OPTS
+ExecStart=/usr/sbin/sshd -D $SSHD_OPTS
+ExecReload=/bin/kill -HUP $MAINPID
+KillMode=process
+Restart=on-failure
+RestartPreventExitStatus=255
+TasksMax=infinity
+
+[Install]
+WantedBy=multi-user.target
+end--------------------------
 
 
 

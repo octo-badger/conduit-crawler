@@ -192,7 +192,7 @@ class Operation
      * could return true if complete, then queue reference wouldn't be needed
      * @param {*} byte 
      */
-    async result(byte)
+    result(byte)
     {
         let name = this.name ? ` for ${this.name}` : '';
         log(`resulting byte${name}: ${byte.toString(16)}`);
@@ -239,25 +239,28 @@ let registers =
     RevisionId: 0x01,
     Motion: 0x02,
     Surface_Quality: 0x05,
+    Self_Test: { value: 0x10, command: 0x01 },
     CRC0: 0x0c, 
     CRC1: 0x0d, 
     CRC2: 0x0e, 
     CRC3: 0x0f, 
-    x28: 0x28,
-    POWER_UP_RESET: 0x3a,
-    Shutdown: 0x3b,
+    POWER_28_FE:  { value: 0x28, command: 0xfe },
+    POWER_UP_RESET: { value: 0x3a, command: 0x5a },
+    Shutdown: { value: 0x3b, command: 0xe7 },
     Inverse_Revision_ID: 0x3e, 
     Inverse_Product_ID: 0x3f,
 }
 
 
+/*
 let payload = 
 {
-    Self_Test: new Buffer.from([msb | 0x10, 0x01]),                                     // Write 0000 0001 to register 0x10, then you need to wait 250 ms  
-    POWER_UP_RESET: new Buffer.from([msb | registers.POWER_UP_RESET, 0x5a]),            // Write 0x5a to register 0x3a 
-    POWER_28_FE: new Buffer.from([msb | registers.x28, 0xfe]),                          // weird one - this is apparently required in the power-up sequence but register 0x28 is in a range of 'reserved' registers - no idea what this does basically
-    Shutdown: new Buffer.from([msb | registers.Shutdown, 0xe7])
+    //Self_Test: new Buffer.from([msb | 0x10, 0x01]),                                     // Write 0000 0001 to register 0x10, then you need to wait 250 ms  
+    //POWER_UP_RESET: new Buffer.from([msb | registers.POWER_UP_RESET, 0x5a]),            // Write 0x5a to register 0x3a 
+    //POWER_28_FE: new Buffer.from([msb | registers.x28, 0xfe]),                          // weird one - this is apparently required in the power-up sequence but register 0x28 is in a range of 'reserved' registers - no idea what this does basically
+    //Shutdown: new Buffer.from([msb | registers.Shutdown, 0xe7])
 }
+//*/
 
 let pins = 
 {
@@ -341,14 +344,14 @@ async function go()
     queue.go();
 
     // 3. Write 0x5a to register 0x3a
-    writePayload(payload.POWER_UP_RESET);
+    writePayload(registers.POWER_UP_RESET);
 
     // 4. Wait for tWAKEUP (23 ms)
     //await pause(23);  
     queue.add(new Operation(async () => await pause(23)));
     
     // 5. Write 0xFE to register 0x28
-    writePayload(payload.POWER_28_FE);
+    writePayload(registers.POWER_28_FE);
 
     /*
     6. Read from registers 0x02, 0x03, and 0x04 (or read
@@ -361,7 +364,7 @@ async function go()
     readRegister(registers.Inverse_Revision_ID, checkExpected('Inverse_Revision_ID', 0xfc));
 
 
-    writePayload(payload.Self_Test);
+    writePayload(registers.Self_Test);
     queue.add(new Operation(async () => await pause(300)));
 
     readRegister(registers.CRC0);
@@ -373,18 +376,19 @@ async function go()
     readRegister(registers.Motion);
     readRegister(registers.Surface_Quality);
     
-    writePayload(payload.Shutdown);
+    writePayload(registers.Shutdown);
     //*/
     
+    queue.add(new Operation(async () => await pause(250)));
     //queue.stop();
 }
 
 
-function writePayload(paylode, callback)
+function writePayload(payload, callback)
 {   
     callback || (callback = byte => true)
-    let name = Object.entries(payload).find(e => e[1] === paylode)[0];
-    queue.add(new Operation(paylode, callback, name));
+    let name = Object.entries(registers).find(e => e[1] === payload)[0];
+    queue.add(new Operation(new Buffer.from([msb | payload.value, payload.command]), callback, name));
 }
 
 
