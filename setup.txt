@@ -38,7 +38,7 @@ create empty repo on github (in this case: RichardLidstone/conduit-crawler)
     git config --global user.email "lidstone@gmail.com"
     git config --global user.name "OctoBadger"
     git commit -m "conduit-crawler skeleton"
-    git remote add origin git@github.com:RichardLidstone/conduit-crawler.git
+    git remote add origin git@github.com:RichardLidstone/conduit-crawler.git        # important to use ssh not http ssh agent key will not be used
     git branch -M main
     git push -u origin main
 
@@ -50,10 +50,15 @@ ssh agent forwarding:
         * Known ssh key: /path/to/.ssh/id_rsa
     - in host machine .ssh/config:
         add: ForwardAgent yes
-    - add keys to github (I forget the steps, but well documented)
+    - add key(s) to github:
+        - copy pubic key contents
+        - paste into new github key definition
     - DONT: setup ssh-agent on the pi!!!
     - DONT: sudo apt install keychain (...on pi - any ssh-agent running appears to completely (and silently) nix forwarding of keys)
-
+    - test using (on client):
+        > ssh-add -L                    # should list your key from the host
+        > ssh -T git@github.com         # should authenticate with github
+        
 
 
 
