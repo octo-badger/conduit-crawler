@@ -310,7 +310,12 @@ let saveBuf = (interleavedBuf) =>
 
 let queue = new SpiQueue(spi, saveBuf);
 
-
+/**
+ * Returns a function that will accept a result and compare it against the passed byte value
+ * @param {string} name name used to log outcome
+ * @param {byte} value The value that should be returned
+ * @returns true
+ */
 function checkExpected(name, value) 
 {
     return byte => 
