@@ -111,6 +111,11 @@ linux host config:
 by default sshd listens to 0.0.0.0 which means both any external ip (eg: 10.0.0.15:22) and loopback 127.0.0.*:22 but I want to add ssh local forwards to 127.0.0.2 / 127.0.0.3 etc
 so first step is to setup sshd to listen only to explicit ips 
 
+install package that provides 'setcap'
+> zypper in libcap-progs
+allow ssh to bind to privilaged ports
+> setcap CAP_NET_BIND_SERVICE=+eip /usr/bin/ssh
+
 create file /usr/local/sbin/sshd-listenLocal.sh: (-rwxr-xr-x root root)
 contents---------------------
 #!/bin/bash
