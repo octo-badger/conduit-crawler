@@ -1,0 +1,17 @@
+
+possible operations:
+
+    - write:
+        - sends command of 1+ bytes
+        - doesn't care about read bytes
+
+    - read:
+        - may send? / sends request of 1+ bytes
+        - reads 1+ bytes
+        - may have non-deterministic end?
+            - continues to send payload byte(s looped?) whilst not finished reading
+
+    - functional:
+        - wait: sends / reads nothing, but awaits for some time
+        - finish: stops queue when everything is fully awaited
+
