@@ -23,7 +23,7 @@ const buttonUp = new Gpio(21, buttonSettings);
 var servoDelta = 0;
 
 buttonDown.glitchFilter(10000);                                                     // level must be stable for 10 ms before an alert event is emitted.
-buttonUp.glitchFilter(10000);                                                     // level must be stable for 10 ms before an alert event is emitted.
+buttonUp.glitchFilter(10000);                                                       // level must be stable for 10 ms before an alert event is emitted.
 
 buttonDown.on('alert', (level) => 
 {
@@ -41,8 +41,8 @@ function go()
 
     let upper = 2385;
     let lower = 600;
-    let pulseWidth = Math.round(lower + ((upper - lower) / 2));
-    let lastServoValue = pulseWidth;
+    let pulseWidth = Math.round(lower + ((upper - lower) / 2));			// initialise to midpoint
+    let lastServoValue = pulseWidth;						            // initialise 
 
     console.log(`start servo (pulseWidth: ${pulseWidth})`);
 
@@ -50,14 +50,14 @@ function go()
     //let servoToken = setInterval(() => 
     intervals.add(() => 
     {
-        pulseWidth += servoDelta;
+        pulseWidth += servoDelta;						        // update desired servo angle
 
-        pulseWidth = Math.max(lower, pulseWidth);
-        pulseWidth = Math.min(upper, pulseWidth);
+        pulseWidth = Math.max(lower, pulseWidth);				// clamp to lower bound
+        pulseWidth = Math.min(upper, pulseWidth);				// clamp to upper bound
 
-        if(pulseWidth > lower && pulseWidth < upper)
+        if(pulseWidth > lower && pulseWidth < upper)			// if desired angle isn't at on of the bounds...
         {
-            motor.servoWrite(pulseWidth);
+            motor.servoWrite(pulseWidth);						    // update servo angle
         }
     }, 
     10);
@@ -66,11 +66,11 @@ function go()
     //let intervalToken = setInterval(() => 
     intervals.add(() => 
     {
-        if(pulseWidth != lastServoValue)
+        if(pulseWidth != lastServoValue)                        // if desired angle has changed from last logged angle ...
         {
-            console.log(`pulseWidth: ${pulseWidth}`);
+            console.log(`pulseWidth: ${pulseWidth}`);               // log the angle
         }
-        lastServoValue = pulseWidth;
+        lastServoValue = pulseWidth;                            // record last angle logged
     }, 200);
 
 }
